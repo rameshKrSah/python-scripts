@@ -216,21 +216,17 @@ def stylize_axis(ax, xticks=True, yticks=False, top_right_spines=True,
         ax.spines['bottom'].set_visible(False)
 
 
-def print_metrics(metrics):
+def print_metrics(met_dict):
     """
-    	Given a metrics, print the values. 
-        The metrics is the array obtained from the compute_performance_metrics function.
+    	Given a metrics dictionary, print the values. 
     """
-    print("Training set loss: {:.3f}".format(metrics[0]))
-    print("Training set accuracy: {:.3f} %".format(metrics[1] * 100))
+    print("Loss: {:.3f}".format(met_dict['Loss']))
+    print("Accuracy: {:.3f} %".format(met_dict['Accuracy'] * 100))
 
-    print("Test set loss: {:.3f}".format(metrics[2]))
-    print("Test set accuracy: {:.3f} %".format(metrics[3] * 100))
-
-    print("Precision score: {:.3f}".format(metrics[4]))
-    print("Recall score: {:.3f}".format(metrics[5]))
-    print("F1 score: {:.3f}".format(metrics[6]))
-    print("ROC AUC: {:.3f}".format(metrics[7]))
+    print("Precision score: {:.3f}".format(met_dict['Precision']))
+    print("Recall score: {:.3f}".format(met_dict["Recall"]))
+    print("F1 score: {:.3f}".format(met_dict['F1 Score']))
+    print("ROC AUC: {:.3f}".format(met_dict['ROC AUC']))
 
 
 def compute_performance_metrics(model, x, y):
@@ -244,8 +240,8 @@ def compute_performance_metrics(model, x, y):
             x: feature vector
             y: label vector
 
-        Returns:
-            True Positive, False Positive, False Negative, True Negative, Recall, Precision, f1 score, roc_auc_score
+        Returns: A dictionary containint, Accuracy, Loss, True Positive, False Positive, False Negative, 
+                True Negative, Recall, Precision, f1 score, roc_auc_score
     """
     try:
         loss, acc = model.evaluate(x, y)
@@ -272,18 +268,30 @@ def compute_performance_metrics(model, x, y):
 
     f1_score_cal = f1_score(y, y_pred)
     print("F1 socre {:.3f}, with formula {:.3f}".format(f1_score_cal,
-                                                    2 * ((precision * recall) / (precision + recall))))
+           2 * ((precision * recall) / (precision + recall))))
 
     print("Average precision score {:.3f}".format(average_precision_score(y, y_pred)))
 
     roc_auc = roc_auc_score(y, y_pred)
     print("ROC AUC Score {:.3f}".format(roc_auc))
     
-    clf_report = classification_report(y, y_pred)
-    print("Classification report \n", clf_report)
+    clf_report = classification_report(y, y_pred, output_dict=True)
+    print(f"Classification report {clf_report[str(p)] for p in np.unique(y)}")
+    # print(clf_report.keys())
 
-    return [tp, fp, tn, fn, recall, precision, f1_score_cal, roc_auc, clf_report]
+    rt_dict = {'Accuracy': acc,
+            'Loss': loss,
+            'True Positive': tp, 
+            'False Positive': fp, 
+            'True Negative': tn, 
+            'False Negative': fn,
+            'Recall': recall,
+            'Precision': precision,
+            'F1 Score': f1_score_cal,
+            'ROC AUC': roc_auc,
+            'Report': clf_report}
 
+    return rt_dict
 
 def split_into_train_val_test(X, Y, test_split = 0.25, val_split=0.0):
     """ 
@@ -412,13 +420,18 @@ def cross_validation(model_function, X, Y, n_CV, test_split, val_split, batch_si
         metrics_arr.append(results)
         train_report = compute_performance_metrics(model, x_tr, y_tr)
         test_report = compute_performance_metrics(model, x_ts, y_ts)
-        results_dict[i] = {'Tr Loss': results[0], "Tr Acc": results[1], "Ts Loss": results[2], "Ts Acc": results[3],
-        "Tr TP": train_report[0], "Tr FP": train_report[1], "Tr TN": train_report[2], "Tr FN": train_report[3], 
-        "Tr Recall": train_report[4], "Tr Precision": train_report[5], "Tr F1": train_report[6], "Tr ROC": train_report[7],
-        "Tr Report": train_report[8],
-        "Ts TP": test_report[0], "Ts FP": test_report[1], "Ts TN": test_report[2], "Ts FN": test_report[3], 
-        "Ts Recall": test_report[4], "Ts Precision": test_report[5], "Ts F1": test_report[6], "Ts ROC": test_report[7],
-        "Ts Report": test_report[8]}
+        results_dict[i] = {"Training Loss": results[0], "Training Accuracy": results[1], 
+                            "Test Loss": results[2], "Test Accuracy": results[3],
+                            "Training True Positive": train_report[0], "Training False Positive": train_report[1], 
+                            "Training True Negative": train_report[2], "Training False Negative": train_report[3], 
+                            "Training Recall": train_report[4], "Training Precision": train_report[5], 
+                            "Training F1 Score": train_report[6], "Training ROC AUC": train_report[7],
+                            "Training Report": train_report[8],
+                            "Test True Positive": test_report[0], "Test False Positive": test_report[1], 
+                            "Test True Negative": test_report[2], "Test False Negative": test_report[3], 
+                            "Test Recall": test_report[4], "Test Precision": test_report[5], 
+                            "Test F1 Score": test_report[6], "Test RO AUC": test_report[7],
+                            "Test Report": test_report[8]}
 
     metrics_arr = np.array(metrics_arr).reshape(n_CV, 4)
     print("Average Training Set Accuracy {:.3f}".format(np.average(metrics_arr[:, 1].ravel())))
