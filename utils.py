@@ -218,8 +218,8 @@ def stylize_axis(ax, xticks=True, yticks=False, top_right_spines=True,
 
 def print_metrics(metrics):
     """
-    	Given a metrics, print the values. The metrics is the array obtained from 
-    	the compute_performance_metrics function.
+    	Given a metrics, print the values. 
+        The metrics is the array obtained from the compute_performance_metrics function.
     """
     print("Training set loss: {:.3f}".format(metrics[0]))
     print("Training set accuracy: {:.3f} %".format(metrics[1] * 100))
@@ -301,18 +301,7 @@ def split_into_train_val_test(X, Y, test_split = 0.25, val_split=0.0):
     """
     if len(X) != len(Y):
         raise ValueError("X and Y must be the same length")
-
-    # # Scale the data into range [-1.0, 1.0]
-    # p, q, r = X.shape
-    # X = X.reshape(-1, q * r)
-    # scaler = MinMaxScaler(feature_range=(-1.0, 1.0))
-    # X = scaler.fit_transform(X)
-    # X = X.reshape(-1, q, r)
-
-    # # transpose the X into (:, n_window_size, n_channels) to make it compatible with CNN model
-    # if len(X.shape) == 3:
-    #     X = np.transpose(X, (0, 2, 1))
-
+    
     # split the data
     random_state = 42
     x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=test_split, random_state=random_state, shuffle=True, stratify=Y)
@@ -438,7 +427,7 @@ def cross_validation(model_function, X, Y, n_CV, test_split, val_split, batch_si
     return results_dict
 
 
-def evaluate_model(model, x_tr, y_tr_hot, x_ts, y_ts_hot, x_val = [], y_val_hot = [], BATCH_SIZE = 32, EPOCHS = 50):
+def evaluate_model(model, x_tr, y_tr_hot, x_ts, y_ts_hot, val_split=0.0, batch_size = 32, epochs = 50):
     """
         @brief: Train the model and evaluate it on training and test set and return the results.
 
@@ -458,19 +447,25 @@ def evaluate_model(model, x_tr, y_tr_hot, x_ts, y_ts_hot, x_val = [], y_val_hot 
     loss = PlotLosses(['accuracy', 'loss'])
     cbs = [loss]
     
-    if len(x_val) > 0:
-          # fit the model
-        model_history = model.fit(x_tr, y_tr_hot, batch_size = BATCH_SIZE, epochs = EPOCHS, 
-                                  validation_data = (x_val, y_val_hot), verbose = 0, callbacks = cbs)
-    else:
-        # fit the model
-        model_history = model.fit(x_tr, y_tr_hot, batch_size = BATCH_SIZE, epochs = EPOCHS, 
-                                    verbose = 0, callbacks = cbs)
+    # fit the model
+    model_history = model.fit(x_tr, y_tr_hot, batch_size = batch_size, epochs = epochs, 
+                              validation_split = val_split, verbose = 0, callbacks = cbs)
+
+    # if len(x_val) > 0:
+    #       # fit the model
+    #     model_history = model.fit(x_tr, y_tr_hot, batch_size = BATCH_SIZE, epochs = EPOCHS, 
+    #                               validation_size = val_split, verbose = 0, callbacks = cbs)
+    # else:
+    #     # fit the model
+    #     model_history = model.fit(x_tr, y_tr_hot, batch_size = BATCH_SIZE, epochs = EPOCHS, 
+    #                                 verbose = 0, callbacks = cbs)
     
     # get the performance values
     tr_loss, tr_acc = model.evaluate(x_tr, y_tr_hot)
     ts_loss, ts_acc = model.evaluate(x_ts, y_ts_hot)
     
+    print(f"Tr loss {tr_loss}, Acc {tr_acc}")
+    print(f"Ts loss {ts_loss}, Acc {ts_acc}")
     return [tr_loss, tr_acc, ts_loss, ts_acc]
 
 
@@ -517,7 +512,7 @@ def segment_sensor_reading(values, window_duration, overlap_percentage,
     return segments
 
 
-def create_tf_dataset(X, Y, batch_size):
+def create_tf_dataset(X, Y, batch_size, test_size=0.3):
   """ Create train and test TF dataset from X and Y
     The prefetch overlays the preprocessing and model execution of a training step. 
     While the model is executing training step s, the input pipeline is reading the data for step s+1.
@@ -533,8 +528,11 @@ def create_tf_dataset(X, Y, batch_size):
   X = X.astype('float32')
   Y = Y.astype('float32')
   
-  x_tr, x_ts, y_tr, y_ts = train_test_split(X, Y, test_size = 0.2, random_state=42, stratify=Y, shuffle=True)
+  x_tr, x_ts, y_tr, y_ts = train_test_split(X, Y, test_size = 0.3, random_state=42, stratify=Y, shuffle=True)
   
+  print(f"Train size: {x_tr.shape[0]}")
+  print(f"Test size: {x_ts.shape[0]}")
+
   train_dataset = tf.data.Dataset.from_tensor_slices((x_tr, y_tr))
   train_dataset = train_dataset.shuffle(buffer_size=1000, reshuffle_each_iteration=True)
   train_dataset = train_dataset.batch(batch_size).prefetch(AUTOTUNE)
