@@ -17,8 +17,6 @@ import preprocessing as preprocessing
 
 from argparse import ArgumentParser
 
-data_folder = "../Data/Wearable Devices Study Data/"
-output_folder = "../Processed Data/24 seconds window ADARP/"
 
 participants_folder = ['Part 101C',
  'Part 102C',
@@ -72,6 +70,8 @@ E4_BVP_SF = 64
 E4_HR_SF = 1
 E4_TEMP_SF = 4
 
+EDA_CUTOFF_FREQ = 5.0/ E4_EDA_SF
+
 # 40 minutes, 20 minutes before the event and 20 minutes after the event
 tag_segment_length_seconds = 40 * 60
 
@@ -79,6 +79,9 @@ tag_segment_length_seconds = 40 * 60
 window_length_seconds = 60
 overlap_seconds = 30          # 50% overlap
 overlap_percent = 0.5
+
+# data_folder = "../Data/Wearable Devices Study Data/"
+# output_folder = "../Processed Data/24 seconds window ADARP/"
 
 def get_sensor_data(file_path):
     """
@@ -95,23 +98,29 @@ def get_sensor_data(file_path):
     return data
 
 
-def get_tag_timestamps(file_directory):
+def get_tag_timestamps(tag_file):
     """
-    Given the data directory, open the tags file and retun the tag timestamps as an array.
-    :param file_directory: Path to the folder containing the tags file.
+        Open the tag files and retun the tag timestamps as an array.
+    
+    :param tag_file: Path to the tags file.
+    """
 
-    """
-    file_path = file_directory + "/tags.csv"
     tag_timestamps = []
 
-    try:
-        with open(file_path, "r") as read_file:
-            csv_reader = csv.reader(read_file)
-            for row in csv_reader:
-                unix_time = float(row[0])
-                tag_timestamps.append(unix_time)
-    except:
-        print("No Tags file in " + file_directory)
+    count = 0
+    for line in open(tag_file): count += 1
+
+    if count < 2:
+        return tag_timestamps
+
+    # print(f"{count - 1} tags in {tag_file}")
+    with open(tag_file, "r") as read_file:
+        csv_reader = csv.reader(read_file)
+        # skip the header line
+        next(csv_reader)
+        for row in csv_reader:
+            unix_time = float(row[0])
+            tag_timestamps.append(unix_time)
 
     return tag_timestamps
 
@@ -277,6 +286,84 @@ def get_acc_data_around_tags(data_folder, tag_timestamps, segment_size):
     sensor_data = get_sensor_data(file_path)
 
     return extract_segments_around_tags(sensor_data, tag_timestamps, segment_size)
+
+def extract_segments_for_verified_tags(data_folder, tag_timestamps_folder, segment_length, output_folder):
+    # data containers
+    eda_data = []
+    hr_data = []
+    acc_data = []
+    bvp_data = []
+    temp_data = []
+
+    for participants_tags_file in os.listdir(tag_timestamps_folder):
+        # get the verified tag for the participants
+        tag_events = get_tag_timestamps(tag_timestamps_folder  + participants_tags_file)
+        if(len(tag_events) == 0):
+            continue
+
+        # print(tag_events)
+
+        # get the participants identifier
+        participant_name = participants_tags_file[:9]
+
+        # the original folder with participant data
+        participants_data_folder = data_folder + participant_name + "/"
+
+        # subfolders within the participants data folder. 
+        subfolders = os.listdir(participants_data_folder)
+
+        # for each sub-folder in the participants folder
+        for sub in subfolders:
+            sub_folder_path = participants_data_folder + sub
+
+            # get the tag events in this folder
+            tag_timestamps = get_tag_timestamps(sub_folder_path + '/tags.csv')
+            if(len(tag_timestamps) == 0):
+                continue
+
+            # print(tag_timestamps)
+
+            # if there are tag events, and if any verified tags are within this list
+            # extract data around the verified tag event timestamp
+            print(f"Searching for {tag} in {tag_timestamps}")
+            if len(tag_timestamps):
+                for tag in tag_events:
+                    for stamps in tag_timestamps:
+                        if tag - stamps < 10:
+                            # first EDA
+                            values = get_eda_data_around_tags(sub_folder_path, [stamps], segment_length)
+                            if len(values):
+                                eda_data.extend(values)
+
+                            # second temperature
+                            values = get_temp_data_around_tags(sub_folder_path, [stamps], segment_length)
+                            if len(values):
+                                temp_data.extend(values)
+
+                            # third bvp
+                            values = get_bvp_data_around_tags(sub_folder_path, [stamps], segment_length)
+                            if len(values):
+                                bvp_data.extend(values)
+
+                            # fourth hr
+                            values = get_hr_data_around_tags(sub_folder_path, [stamps], segment_length)
+                            if len(values):
+                                hr_data.extend(values)
+
+                            # fifth acc
+                            values = get_acc_data_around_tags(sub_folder_path, [stamps], segment_length)
+                            if len(values):
+                                acc_data.extend(values)
+
+    # save the participants data
+    # print("Saving data of participants " + p)
+    # utl.save_data(output_folder + p + "_EDA_TAG.pkl", np.array(part_eda_data))
+    # utl.save_data(output_folder + p + "_TEMP_TAG.pkl", np.array(part_temp_data))
+    # utl.save_data(output_folder + p + "_HR_TAG.pkl", np.array(part_hr_data))
+    # utl.save_data(output_folder + p + "_BVP_TAG.pkl", np.array(part_bvp_data))
+    # utl.save_data(output_folder + p + "_ACC_TAG.pkl", np.array(part_acc_data))
+
+    return np.array(eda_data), np.array(hr_data), np.array(acc_data), np.array(bvp_data), np.array(temp_data)
 
 
 def extract_data_around_tags(segment_length):
@@ -577,7 +664,7 @@ def segment_sensor_data(data_array, sample_rate, window_duration, overlap_percen
     @param window_duration: Window size in seconds
     @param overlap_percent: Overlap percentage between consequtive windows.
     """
-    
+
     window_segments = np.zeros((1, sample_rate * window_duration))
     
     # get the window segments
