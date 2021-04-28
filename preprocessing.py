@@ -41,7 +41,7 @@ def normalization(gsrdata):
     n_gsrdata : 1-d array
         normalized gsr data
   '''
-  gsrdata = gsrdata-(np.min(gsrdata))
+  gsrdata = gsrdata - (np.min(gsrdata))
   gsrdata /= (np.max(gsrdata) - np.min(gsrdata))
   n_gsrdata = gsrdata
   return n_gsrdata
