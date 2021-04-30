@@ -205,10 +205,14 @@ def get_eda_data_around_tags(data_folder, tag_timestamps, segment_size):
 
     # load the data from EDA.csv
     file_path = data_folder + "/EDA.csv"
+    processed_EDA = []
+
     sensor_data = get_sensor_data(file_path)
 
+    if len(sensor_data) == 0:
+        return processed_EDA
+
     segments = extract_segments_around_tags(sensor_data, tag_timestamps, segment_size)
-    processed_EDA = []
     for p in segments:
         pp = filters.butter_lowpassfilter(np.array(p).ravel(), EDA_CUTOFF_FREQ, E4_EDA_SF, order=2)
         pp = preprocessing.normalization(pp)
@@ -231,8 +235,10 @@ def get_hr_data_around_tags(data_folder, tag_timestamps, segment_size):
     # load the data from EDA.csv
     file_path = data_folder + "/HR.csv"
     sensor_data = get_sensor_data(file_path)
-
-    return extract_segments_around_tags(sensor_data, tag_timestamps, segment_size)
+    if len(sensor_data) == 0:
+        return []
+    else:
+        return extract_segments_around_tags(sensor_data, tag_timestamps, segment_size)
 
 
 def get_temp_data_around_tags(data_folder, tag_timestamps, segment_size):
@@ -249,8 +255,11 @@ def get_temp_data_around_tags(data_folder, tag_timestamps, segment_size):
     # load the data from EDA.csv
     file_path = data_folder + "/TEMP.csv"
     sensor_data = get_sensor_data(file_path)
-
-    return extract_segments_around_tags(sensor_data, tag_timestamps, segment_size)
+    
+    if len(sensor_data) == 0:
+        return []
+    else:
+        return extract_segments_around_tags(sensor_data, tag_timestamps, segment_size)
 
 
 def get_bvp_data_around_tags(data_folder, tag_timestamps, segment_size):
@@ -268,7 +277,10 @@ def get_bvp_data_around_tags(data_folder, tag_timestamps, segment_size):
     file_path = data_folder + "/BVP.csv"
     sensor_data = get_sensor_data(file_path)
 
-    return extract_segments_around_tags(sensor_data, tag_timestamps, segment_size)
+    if len(sensor_data) == 0:
+        return []
+    else:
+        return extract_segments_around_tags(sensor_data, tag_timestamps, segment_size)
 
 
 def get_acc_data_around_tags(data_folder, tag_timestamps, segment_size):
@@ -284,10 +296,17 @@ def get_acc_data_around_tags(data_folder, tag_timestamps, segment_size):
     # load the data from EDA.csv
     file_path = data_folder + "/ACC.csv"
     sensor_data = get_sensor_data(file_path)
-
-    return extract_segments_around_tags(sensor_data, tag_timestamps, segment_size)
+    
+    if len(sensor_data) == 0:
+        return []
+    else:
+        return extract_segments_around_tags(sensor_data, tag_timestamps, segment_size)
 
 def extract_segments_for_verified_tags(data_folder, tag_timestamps_folder, segment_length, output_folder):
+    
+    # total number of segments
+    total_segments = 0
+
     # data containers
     eda_data = []
     hr_data = []
@@ -301,10 +320,9 @@ def extract_segments_for_verified_tags(data_folder, tag_timestamps_folder, segme
         if(len(tag_events) == 0):
             continue
 
-        # print(tag_events)
-
         # get the participants identifier
         participant_name = participants_tags_file[:9]
+        print(f"{participant_name} verified tags {tag_events}")
 
         # the original folder with participant data
         participants_data_folder = data_folder + participant_name + "/"
@@ -312,48 +330,51 @@ def extract_segments_for_verified_tags(data_folder, tag_timestamps_folder, segme
         # subfolders within the participants data folder. 
         subfolders = os.listdir(participants_data_folder)
 
-        # for each sub-folder in the participants folder
-        for sub in subfolders:
-            sub_folder_path = participants_data_folder + sub
+        # for each verified tag search all the participants subfolders for matching event markers.
+        for tag in tag_events:
+            print(f"Searching for verified tag {tag}")
 
-            # get the tag events in this folder
-            tag_timestamps = get_tag_timestamps(sub_folder_path + '/tags.csv')
-            if(len(tag_timestamps) == 0):
-                continue
+            # for each sub-folder in the participants folder
+            for sub in subfolders:
+                sub_folder_path = participants_data_folder + sub
 
-            # print(tag_timestamps)
+                # get the tag events in this folder
+                tag_timestamps = get_tag_timestamps(sub_folder_path + '/tags.csv')
+                if(len(tag_timestamps) == 0):
+                    continue
 
-            # if there are tag events, and if any verified tags are within this list
-            # extract data around the verified tag event timestamp
-            print(f"Searching for {tag} in {tag_timestamps}")
-            if len(tag_timestamps):
-                for tag in tag_events:
-                    for stamps in tag_timestamps:
-                        if tag - stamps < 10:
-                            # first EDA
-                            values = get_eda_data_around_tags(sub_folder_path, [stamps], segment_length)
-                            if len(values):
-                                eda_data.extend(values)
+                # print(f"{participant_name} event markers {tag_timestamps}")
+                # if there are tag events, and if any verified tags are within this list
+                # extract data around the verified tag event timestamp
+                for stamps in tag_timestamps:
+                    if abs(tag - stamps) < 5:
+                        print(f"Verified tag {tag}, event marker {stamps}")
+                        total_segments += 1
 
-                            # second temperature
-                            values = get_temp_data_around_tags(sub_folder_path, [stamps], segment_length)
-                            if len(values):
-                                temp_data.extend(values)
+                        # first EDA
+                        values = get_eda_data_around_tags(sub_folder_path, [stamps], segment_length)
+                        if len(values):
+                            eda_data.extend(values)
 
-                            # third bvp
-                            values = get_bvp_data_around_tags(sub_folder_path, [stamps], segment_length)
-                            if len(values):
-                                bvp_data.extend(values)
+                        # second temperature
+                        values = get_temp_data_around_tags(sub_folder_path, [stamps], segment_length)
+                        if len(values):
+                            temp_data.extend(values)
 
-                            # fourth hr
-                            values = get_hr_data_around_tags(sub_folder_path, [stamps], segment_length)
-                            if len(values):
-                                hr_data.extend(values)
+                        # third bvp
+                        values = get_bvp_data_around_tags(sub_folder_path, [stamps], segment_length)
+                        if len(values):
+                            bvp_data.extend(values)
 
-                            # fifth acc
-                            values = get_acc_data_around_tags(sub_folder_path, [stamps], segment_length)
-                            if len(values):
-                                acc_data.extend(values)
+                        # fourth hr
+                        values = get_hr_data_around_tags(sub_folder_path, [stamps], segment_length)
+                        if len(values):
+                            hr_data.extend(values)
+
+                        # fifth acc
+                        values = get_acc_data_around_tags(sub_folder_path, [stamps], segment_length)
+                        if len(values):
+                            acc_data.extend(values)
 
     # save the participants data
     # print("Saving data of participants " + p)
@@ -533,23 +554,28 @@ def not_stressed_data_from_all_files():
             
             # load the EDA data
             data = get_sensor_data(path+"/EDA.csv")
-            part_eda_data = get_segments_between_timestamps(data, tag_timestamps, tag_segment_length_seconds, part_eda_data)
+            if len(data) != 0:
+                part_eda_data = get_segments_between_timestamps(data, tag_timestamps, tag_segment_length_seconds, part_eda_data)
 
             # HR Segments
             data = get_sensor_data(path+"/HR.csv")
-            part_hr_data = get_segments_between_timestamps(data, tag_timestamps, tag_segment_length_seconds, part_hr_data)
+            if len(data) != 0:
+                part_hr_data = get_segments_between_timestamps(data, tag_timestamps, tag_segment_length_seconds, part_hr_data)
 
             # TEMP Segments
             data = get_sensor_data(path+"/TEMP.csv")
-            part_temp_data = get_segments_between_timestamps(data, tag_timestamps,tag_segment_length_seconds, part_temp_data)
+            if len(data) != 0:
+                part_temp_data = get_segments_between_timestamps(data, tag_timestamps,tag_segment_length_seconds, part_temp_data)
 
             # BVP Segments
             data = get_sensor_data(path+"/BVP.csv")
-            part_bvp_data = get_segments_between_timestamps(data, tag_timestamps, tag_segment_length_seconds, part_bvp_data)
+            if len(data) != 0:
+                part_bvp_data = get_segments_between_timestamps(data, tag_timestamps, tag_segment_length_seconds, part_bvp_data)
 
             # ACC Segments
             data = get_sensor_data(path+"/ACC.csv")
-            part_acc_data = get_segments_between_timestamps(data, tag_timestamps, tag_segment_length_seconds, part_acc_data)
+            if len(data) != 0:
+                part_acc_data = get_segments_between_timestamps(data, tag_timestamps, tag_segment_length_seconds, part_acc_data)
         
         # We filter and normalize the EDA data. 
         processed_EDA =[]
@@ -610,23 +636,28 @@ def not_stressed_data_from_zero_tags_files():
             if len(tag_timestamps) == 0:
                 # load the EDA data
                 data = get_sensor_data(path+"/EDA.csv")
-                part_eda_data.append(data[2:])
+                if len(data) != 0:
+                    part_eda_data.append(data[2:])
 
                 # HR Segments
                 data = get_sensor_data(path+"/HR.csv")
-                part_hr_data.append(data[2:])
+                if len(data) != 0:
+                    part_hr_data.append(data[2:])
                 
                 # TEMP Segments
                 data = get_sensor_data(path+"/TEMP.csv")
-                part_temp_data.append(data[2:])
+                if len(data) != 0:
+                    part_temp_data.append(data[2:])
                 
                 # BVP Segments
                 data = get_sensor_data(path+"/BVP.csv")
-                part_bvp_data.append(data[2:])
+                if len(data) != 0:
+                    part_bvp_data.append(data[2:])
                 
                 # ACC Segments
                 data = get_sensor_data(path+"/ACC.csv")
-                part_acc_data.append(data[2:])
+                if len(data) != 0:
+                    part_acc_data.append(data[2:])
                 
         # We filter and normalize the EDA data. 
         processed_EDA =[]
@@ -718,39 +749,44 @@ def extract_data_without_tags(segment_length):
             if len(tag_timestamps) == 0:
                 # EDA Segments
                 data = get_sensor_data(path+"/EDA.csv")
-                # first entry is the start time and the second row is the sampling frequency
-                segments = get_window_segment(data[2:], segment_length, E4_EDA_SF)
-                if len(segments):
-                    eda_data.extend(segments)
-                    part_eda_data.extend(segments)
+                if len(data) != 0:
+                    # first entry is the start time and the second row is the sampling frequency
+                    segments = get_window_segment(data[2:], segment_length, E4_EDA_SF)
+                    if len(segments):
+                        eda_data.extend(segments)
+                        part_eda_data.extend(segments)
 
                 # HR Segments
                 data = get_sensor_data(path+"/HR.csv")
-                segments = get_window_segment(data[2:], segment_length, E4_HR_SF)
-                if len(segments):
-                    hr_data.extend(segments)
-                    part_hr_data.extend(segments)
+                if len(data) != 0:
+                    segments = get_window_segment(data[2:], segment_length, E4_HR_SF)
+                    if len(segments):
+                        hr_data.extend(segments)
+                        part_hr_data.extend(segments)
 
                 # TEMP Segments
                 data = get_sensor_data(path+"/TEMP.csv")
-                segments = get_window_segment(data[2:], segment_length, E4_TEMP_SF)
-                if len(segments):
-                    temp_data.extend(segments)
-                    part_temp_data.extend(segments)
+                if len(data) != 0:
+                    segments = get_window_segment(data[2:], segment_length, E4_TEMP_SF)
+                    if len(segments):
+                        temp_data.extend(segments)
+                        part_temp_data.extend(segments)
 
                 # BVP Segments
                 data = get_sensor_data(path+"/BVP.csv")
-                segments = get_window_segment(data[2:], segment_length, E4_BVP_SF)
-                if len(segments):
-                    bvp_data.extend(segments)
-                    part_bvp_data.extend(segments)
+                if len(data) != 0:
+                    segments = get_window_segment(data[2:], segment_length, E4_BVP_SF)
+                    if len(segments):
+                        bvp_data.extend(segments)
+                        part_bvp_data.extend(segments)
 
                 # ACC Segments
                 data = get_sensor_data(path+"/ACC.csv")
-                segments = get_window_segment(data[2:], segment_length, E4_ACC_SF)
-                if len(segments):
-                    acc_data.extend(segments)
-                    part_acc_data.extend(segments)
+                if len(data) != 0:
+                    segments = get_window_segment(data[2:], segment_length, E4_ACC_SF)
+                    if len(segments):
+                        acc_data.extend(segments)
+                        part_acc_data.extend(segments)
 
         # save the participants data
         print("Saving data of participants " + p)

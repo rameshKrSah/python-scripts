@@ -501,7 +501,7 @@ def segment_sensor_reading(values, window_duration, overlap_percentage,
     
     start_index = 0
     end_index = start_index + window_length
-    increment_size = int(window_length * (1-overlap_percentage))
+    increment_size = int(window_length * (overlap_percentage))
     
     while(1):
         # print(start_index, end_index)
