@@ -13,7 +13,7 @@ from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_sco
 from sklearn.metrics import average_precision_score
 from sklearn.metrics import precision_recall_curve, plot_precision_recall_curve
 from sklearn.metrics import classification_report, confusion_matrix
-
+import pprint
 import tensorflow as tf
 from tensorflow import keras
 
@@ -276,7 +276,7 @@ def compute_performance_metrics(model, x, y):
     print("ROC AUC Score {:.3f}".format(roc_auc))
     
     clf_report = classification_report(y, y_pred, output_dict=True)
-    print(f"Classification report {clf_report[str(p)] for p in np.unique(y)}")
+    pprint.pprint(clf_report)
     # print(clf_report.keys())
 
     rt_dict = {'Accuracy': acc,
@@ -312,12 +312,14 @@ def split_into_train_val_test(X, Y, test_split = 0.25, val_split=0.0):
     
     # split the data
     random_state = 42
-    x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=test_split, random_state=random_state, shuffle=True, stratify=Y)
+    x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=test_split, random_state=random_state, 
+                                                        shuffle=True, stratify=Y)
     
     x_val = np.array([])
     y_val = np.array([])
     if val_split > 0.0:
-        x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=val_split, random_state=random_state, shuffle=True, stratify=y_train)
+        x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=val_split, random_state=random_state, 
+                                                          shuffle=True, stratify=y_train)
 
     print("Training set {} \nTest set {}\nValidation set {}".format(x_train.shape, x_test.shape, x_val.shape))
     return x_train, x_val, x_test, y_train, y_val, y_test
@@ -330,10 +332,13 @@ def select_random_samples(data, n_samples):
 
         @return: Randomly selected samples
     """
-    length = len(data)
+    length = data.shape[0]
     print(length, n_samples)
-    random_index = np.random.randint(0, length, size=length if length < n_samples else n_samples)
-    return data[random_index]
+    if n_samples >= length:
+        return data
+    else:
+        random_index = np.random.randint(low=0, high=length, size=n_samples)
+        return data[random_index]
 
 
 def get_hot_labels(Y):
@@ -390,7 +395,7 @@ def load_data_with_preprocessing(data_path):
     return x, y
 
 
-def cross_validation(model_function, X, Y, n_CV, test_split, val_split, batch_size = 32, epochs = 50):
+def cross_validation(model_function, X, Y, n_CV, test_split, val_split, batch_size=32, epochs=50):
     """
         @brief: Do cross validation for n_CV times and returns the results.
 
@@ -404,19 +409,16 @@ def cross_validation(model_function, X, Y, n_CV, test_split, val_split, batch_si
 
         @return: Results of the cross validation, a dictionary
     """
-    x_tr, x_val, x_ts, y_tr, y_val, y_ts = split_into_train_val_test(X, Y, test_split, val_split)
-
+    x_tr, x_val, x_ts, y_tr, y_val, y_ts = split_into_train_val_test(X, Y, test_split, val_split=0.0)
     y_tr_hot = get_hot_labels(y_tr)
-    y_val_hot = []
-    if val_split != 0.0:
-        y_val_hot = get_hot_labels(y_val)
     y_ts_hot = get_hot_labels(y_ts)
 
     results_dict = {}
     metrics_arr = []
     for i in range(n_CV):
         model = model_function()
-        results = evaluate_model(model, x_tr, y_tr_hot, x_ts, y_ts_hot, x_val, y_val_hot, batch_size, epochs)
+        results = evaluate_model(model, x_tr, y_tr_hot, x_ts, y_ts_hot, validation_split=val_split, 
+                                 batch_size=batch_size, epochs=epochs)
         metrics_arr.append(results)
         train_report = compute_performance_metrics(model, x_tr, y_tr)
         test_report = compute_performance_metrics(model, x_ts, y_ts)
@@ -440,7 +442,8 @@ def cross_validation(model_function, X, Y, n_CV, test_split, val_split, batch_si
     return results_dict
 
 
-def evaluate_model(model, x_tr, y_tr_hot, x_ts, y_ts_hot, val_split=0.0, batch_size = 32, epochs = 50):
+def evaluate_model(model, x_tr, y_tr_hot, x_ts, y_ts_hot, val_split=0.0, 
+                   batch_size=32, epochs=50, callbacks=[]):
     """
         @brief: Train the model and evaluate it on training and test set and return the results.
 
@@ -459,6 +462,10 @@ def evaluate_model(model, x_tr, y_tr_hot, x_ts, y_ts_hot, val_split=0.0, batch_s
     # plot loss function
     loss = PlotLosses(['accuracy', 'loss'])
     cbs = [loss]
+    
+    # append other callbacks
+    for c in callbacks:
+      cbs.append(c)
     
     # fit the model
     model_history = model.fit(x_tr, y_tr_hot, batch_size = batch_size, epochs = epochs, 
