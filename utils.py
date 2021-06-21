@@ -50,12 +50,14 @@ class PlotLosses(keras.callbacks.Callback):
             except:
                 val_value = 0.0
 
-            # store the metric: for f1-score we get two values one for each class. We only want the value for the positive class
+            # store the metric: for f1-score we get two values one for each class. 
+            # We only want the value for the positive class
             self.metrics[name].append(tr_value)
             self.metrics['val_'+name].append(val_value)
 
         self.i += 1
-        f, axes = plt.subplots(len(self.metrics_names), 1, sharex=True, figsize=(15, 8))
+        f, axes = plt.subplots(len(self.metrics_names), 1, sharex=True, 
+                               figsize=(12, 4 * len(self.metrics_names)))
         clear_output(wait=True)
         
         for name, ax in zip(self.metrics_names, axes):
@@ -229,7 +231,7 @@ def print_metrics(met_dict):
     print("ROC AUC: {:.3f}".format(met_dict['ROC AUC']))
 
 
-def compute_performance_metrics(model, x, y):
+def compute_performance_metrics(model, x, y, metric_names):
     """
         Given a model (TensorFlow) and (x, y), we compute accuracy, loss, True Positive, False Negative,
         False Positive, True Negative, Recall, Precision, f1 score, Average Precision Recall, ROC AUC, 
@@ -244,15 +246,23 @@ def compute_performance_metrics(model, x, y):
                 True Negative, Recall, Precision, f1 score, roc_auc_score
     """
     try:
-        loss, acc = model.evaluate(x, y)
+        metrics = model.evaluate(x, y)
     except:
         y_hot = keras.utils.to_categorical(y, np.max(y) + 1)
-        loss, acc = model.evaluate(x, y_hot)
+        metrics = model.evaluate(x, y_hot)
 
+    rt = dict()
+    for name, val in zip(metric_names, metrics):
+      rt[name] = val
+    # return rt
+
+    # the loss is always at first position and accuracy the second
+    loss, acc = metrics[0], metrics[1] * 100 
     print("Accuracy {:.3f}, Loss {:.3f}".format(acc, loss))
 
     y_probs = model.predict(x)
     y_pred = np.argmax(y_probs, axis = 1)
+    y = np.argmax(y, axis = 1)
     tn, fp, fn, tp = confusion_matrix(y, y_pred).ravel()
 
     print("True Positive ", tp)
@@ -288,8 +298,8 @@ def compute_performance_metrics(model, x, y):
             'Recall': recall,
             'Precision': precision,
             'F1 Score': f1_score_cal,
-            'ROC AUC': roc_auc,
-            'Report': clf_report}
+            'ROC AUC': roc_auc
+            }
 
     return rt_dict
 
@@ -442,51 +452,42 @@ def cross_validation(model_function, X, Y, n_CV, test_split, val_split, batch_si
     return results_dict
 
 
-def evaluate_model(model, x_tr, y_tr_hot, x_ts, y_ts_hot, val_split=0.0, 
-                   batch_size=32, epochs=50, callbacks=[]):
+def evaluate_model(model, x_tr, y_tr, x_ts, y_ts, val_split=0.0, 
+                   batch_size=32, epochs=50, callbacks=[], 
+                   metric_names=['accuracy', 'loss']):
     """
         @brief: Train the model and evaluate it on training and test set and return the results.
 
         @param: model: TF model
         @param: x_tr: training x
-        @param: y_tr_hot: Hot encoded training y
+        @param: y_tr: training y
         @param: x_ts: test x
-        @param: y_ts_hot: Hot encoded test y
-        @param: x_val: validation x
-        @param: y_val_hot: Hot encoded validation y
+        @param: y_ts: test y
+        @param: val_split: validation set split
         @param: BATCH_SIZE (int): default value 32
         @param: EPOCHS (int): default value 50
+        @param: callbacks: TF callback functions
+        @param: metric_names
 
-        @return: [tr_loss, tr_acc, ts_loss, ts_acc] : Training loss, Training Acc, Test loss, Test Acc
+        @return: Train and test metrics
     """
     # plot loss function
-    loss = PlotLosses(['accuracy', 'loss'])
-    cbs = [loss]
+    plot_loss_cb = PlotLosses(metric_names)
+    cbs = [plot_loss_cb]
     
     # append other callbacks
     for c in callbacks:
       cbs.append(c)
-    
+
     # fit the model
-    model_history = model.fit(x_tr, y_tr_hot, batch_size = batch_size, epochs = epochs, 
+    model_history = model.fit(x_tr, y_tr, batch_size = batch_size, epochs = epochs, 
                               validation_split = val_split, verbose = 0, callbacks = cbs)
 
-    # if len(x_val) > 0:
-    #       # fit the model
-    #     model_history = model.fit(x_tr, y_tr_hot, batch_size = BATCH_SIZE, epochs = EPOCHS, 
-    #                               validation_size = val_split, verbose = 0, callbacks = cbs)
-    # else:
-    #     # fit the model
-    #     model_history = model.fit(x_tr, y_tr_hot, batch_size = BATCH_SIZE, epochs = EPOCHS, 
-    #                                 verbose = 0, callbacks = cbs)
-    
     # get the performance values
-    tr_loss, tr_acc = model.evaluate(x_tr, y_tr_hot)
-    ts_loss, ts_acc = model.evaluate(x_ts, y_ts_hot)
+    train_metrics = model.evaluate(x_tr, y_tr)
+    test_metrics = model.evaluate(x_ts, y_ts)
     
-    print(f"Tr loss {tr_loss}, Acc {tr_acc}")
-    print(f"Ts loss {ts_loss}, Acc {ts_acc}")
-    return [tr_loss, tr_acc, ts_loss, ts_acc]
+    return train_metrics, test_metrics
 
 
 def segment_sensor_reading(values, window_duration, overlap_percentage,
