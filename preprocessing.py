@@ -1,10 +1,9 @@
-# Importing necessary libraries
 import numpy as np
 import scipy.signal as sps
-
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 def resample_data(gsrdata, prevSR, newSR):
-  '''calculates rolling mean
+  '''Calculates rolling mean
     Function to calculate moving average over the passed data
 	
     Parameters
@@ -28,7 +27,7 @@ def resample_data(gsrdata, prevSR, newSR):
 
 	
 def normalization(gsrdata):
-  '''min max normalization
+  '''Min Max normalization
     Function to calculate normalized gsr data
 	
     Parameters
@@ -87,3 +86,47 @@ def rolling_mean(data, windowsize, sample_rate):
       rol_mean = rol_mean[:-1]
 	  
   return rol_mean
+
+def min_max_scale(data):
+  """
+    Min-Max scale the data in the range [-1.0, 1.0]
+    The data is expected to have the shape (samples, length, channels)
+  
+    Return the scaled data in the original shape.
+  """
+  _, segment_length, n_channels = data.shape
+
+  # flatten the data
+  features = data.reshape(-1, segment_length * n_channels)
+
+  # scale the data
+  scaler = MinMaxScaler(feature_range=(-1.0, 1.0))
+  features = scaler.fit_transform(features)
+  
+  # reshape the data
+  features = features.reshape(-1, n_channels, segment_length)
+  features = np.transpose(features, (0, 2, 1))
+
+  return features
+  
+def standard_scaler(data):
+  """ Normalize the data to have zero mean and unit standard devication
+    The data is expected to have the shape (n_samples, segment_length, n_channels)
+  
+    Return the scaled data in the original shape.
+  """
+  _, segment_length, n_channels = data.shape
+
+  # flatten the data
+  features = data.reshape(-1, segment_length * n_channels)
+
+  # scale the data
+  scaler = StandardScaler(with_mean=False, with_std=False)
+  features = scaler.fit_transform(features)
+  
+  # reshape the data
+  features = features.reshape(-1, n_channels, segment_length)
+  features = np.transpose(features, (0, 2, 1))
+
+  return features
+	

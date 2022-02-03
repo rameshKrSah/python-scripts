@@ -107,7 +107,7 @@ def print_confusion_matrix(confusion_matrix, class_names, activities,
     plt.show()
 	
 	
-def get_features_labels_from_df(data_df, n_channels, n_window_len):
+def get_features_labels_from_df(data_df, shape_y, shape_z):
     """
 	    Given a dataframe with class as column, separate the features and class label
 	    and normalize the feature with min-max scaler and encode label as one-hot 
@@ -115,8 +115,8 @@ def get_features_labels_from_df(data_df, n_channels, n_window_len):
 
         Arguments:
         data_df (pandas DataFrame): dataframe
-        n_channels (int) : Number of channels for the sensor data
-        n_window_len (int) : Length of the window segment
+        shape_y (int) : Number of channels for the sensor data
+        shape_z (int) : Length of the window segment
 
         Returns:
         Normalized features in the range (-1.0, 1.0), label, and one hot encoded label
@@ -127,7 +127,7 @@ def get_features_labels_from_df(data_df, n_channels, n_window_len):
     scaler = MinMaxScaler(feature_range=(-1.0, 1.0))
     features = scaler.fit_transform(features)
     
-    features = features.reshape(-1, n_channels, n_window_len)
+    features = features.reshape(-1, shape_y, shape_z)
     features = np.transpose(features, (0, 2, 1))
 	
     labels_one_hot = keras.utils.to_categorical(labels, np.max(labels)+1)
@@ -373,19 +373,18 @@ def compute_performance_metrics(model, x, y, metric_names):
 
     return rt_dict
 
-def split_into_train_val_test(X, Y, test_split = 0.25, val_split=0.0):
+def split_into_train_test(X, Y, test_split = 0.25):
     """ 
-        Given data (X, Y), split the data into training, validation and test sets.
+        Given data (X, Y), split the data into training and testing sets.
         Validation is 10 percent of the training set.
 
         Arguments:
             X (numpy.ndarray): Data vector
             Y (numpy.ndarray): Label vector
             test_split (float): Test split (0.25 by default)
-            val_split (float): Validation set split (0.0 by default)
 
         Returns:
-            x_train, y_train, x_val, y_val, x_test, and y_test
+            x_train, y_train, x_test, and y_test
     """
     if len(X) != len(Y):
         raise ValueError("X and Y must be the same length")
@@ -395,14 +394,14 @@ def split_into_train_val_test(X, Y, test_split = 0.25, val_split=0.0):
     x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=test_split, random_state=random_state, 
                                                         shuffle=True, stratify=Y)
     
-    x_val = np.array([])
-    y_val = np.array([])
-    if val_split > 0.0:
-        x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=val_split, random_state=random_state, 
-                                                          shuffle=True, stratify=y_train)
+    # x_val = np.array([])
+    # y_val = np.array([])
+    # if val_split > 0.0:
+    #     x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=val_split, random_state=random_state, 
+    #                                                       shuffle=True, stratify=y_train)
 
-    print("Training set {} \nTest set {}\nValidation set {}".format(x_train.shape, x_test.shape, x_val.shape))
-    return x_train, x_val, x_test, y_train, y_val, y_test
+    print("Training set {} \nTest set {}".format(x_train.shape, x_test.shape))
+    return x_train, x_test, y_train, y_test
 
 def select_random_samples(data, n_samples):
     """
@@ -489,7 +488,7 @@ def cross_validation(model_function, X, Y, n_CV, test_split, val_split, batch_si
 
         @return: Results of the cross validation, a dictionary
     """
-    x_tr, x_val, x_ts, y_tr, y_val, y_ts = split_into_train_val_test(X, Y, test_split, val_split=0.0)
+    x_tr, x_val, x_ts, y_tr, y_val, y_ts = split_into_train_test(X, Y, test_split, val_split=0.0)
     y_tr_hot = get_hot_labels(y_tr)
     y_ts_hot = get_hot_labels(y_ts)
 
@@ -632,7 +631,22 @@ def create_tf_dataset(X, Y, batch_size, test_size=0.3):
   test_dataset = test_dataset.batch(batch_size).prefetch(AUTOTUNE)
   
   return train_dataset, test_dataset
-
+    
+def check_continuity(array):
+    """
+        Check whether the array contains continous values or not like 1, 2, 3, 4, ..
+    """
+    max_v = max(array)
+    min_v = min(array)
+    n = len(array)
+#     print(n, min_v, max_v)
+    if max_v - min_v + 1 == n:
+#         print("Given array has continous values")
+        return True
+    else:
+#         print("Given array is not continous")
+        return False
+        
 
 if __name__ == "__main__":
     print("Script with utilities functions used throughout the research projects.")
@@ -646,7 +660,7 @@ if __name__ == "__main__":
     print(stylize_axis.__doc__)
     print(print_metrics.__doc__)
     print(compute_performance_metrics.__doc__)
-    print(split_into_train_val_test.__doc__)
+    print(split_into_train_test.__doc__)
     print(get_hot_labels.__doc__)
     print(find_min_max.__doc__)
     print(load_data_with_preprocessing.__doc__)
