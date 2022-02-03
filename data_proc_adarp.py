@@ -169,6 +169,8 @@ def extract_segments_around_tags(data, tags, segment_size):
     # the number of data samples before and after the timestamps
     n_obs = int((segment_size // 2) * sampling_freq)
 
+    skipped_tags = 0
+
     # for each time stamp in tags
     for timestamp in tags:
         # if the timestamp is within the sensor time array
@@ -179,19 +181,35 @@ def extract_segments_around_tags(data, tags, segment_size):
             # get the index in the sensor data array, based on the difference of tag timestamp
             position = int(difference * sampling_freq)
             
+            # check is there are enough data points to extract 1 hour of data around the tag. 
+            check_threshold = 30 * 60 *  sampling_freq        # 30 minutes before and after the tag
+            if ((position - check_threshold) < 0) | ((position + check_threshold) > data_length):
+                # print("not enough data for 1 hour segment length")
+                skipped_tags += 1
+                continue
+
             # window segment position in the data array
             from_ = position - n_obs
             to_ = position + n_obs
 
-            if (from_ < 0):
-                from_ = 0
-            if (to_ > data_length):
-                to_ = data_length
+            # here we can insert logic to make sure that we have sensor data of length segment_size
+            if (from_ < 0) | (to_ > data_length):
+                # skip this segment if length is not equal to the segment_size
+                print(f"skipping segment From: {from_}, To: {to_}, Data Len: {data_length}")
+                continue
+            else:
+                # get the data segment
+                seg = sensor_data[from_:to_]
+                segments.append(seg)
 
-            # get the data segment
-            seg = sensor_data[from_:to_]
-            segments.append(seg)
+            # necessary to make sure that we dont have invalid indices
+            # if (from_ < 0):
+            #     from_ = 0
+            # if (to_ > data_length):
+            #     to_ = data_length
 
+    # if skipped_tags != 0:
+    #     print(f"Skipped {skipped_tags} ", end=" ")
     return segments
 
 
@@ -338,7 +356,7 @@ def extract_segments_for_verified_tags(data_folder, tag_timestamps_folder, segme
 
         # get the participants identifier
         participant_name = participants_tags_file[:9]
-        print(f"{participant_name} has verified tags {tag_events}")
+        #print(f"{participant_name} has verified tags {tag_events}")
 
         # the original folder with participant data
         participants_data_folder = data_folder + participant_name + "/"
@@ -348,7 +366,7 @@ def extract_segments_for_verified_tags(data_folder, tag_timestamps_folder, segme
 
         # for each verified tag search all the participants subfolders for matching event markers.
         for tag in tag_events:
-            print(f"Searching for verified tag {tag}")
+            #print(f"Searching for verified tag {tag}")
 
             # for each sub-folder in the participants folder
             for sub in subfolders:
@@ -364,7 +382,7 @@ def extract_segments_for_verified_tags(data_folder, tag_timestamps_folder, segme
                 # extract data around the verified tag event timestamp
                 for stamps in tag_timestamps:
                     if abs(tag - stamps) < 5:
-                        print(f"Verified tag {tag}, event marker {stamps}")
+                        #print(f"Verified tag {tag}, event marker {stamps}")
                         total_segments += 1
 
                         # first EDA
@@ -413,7 +431,7 @@ def extract_data_around_tags(data_folder, segment_length, save_part_data=False, 
         Param
         ===================
         data_folder -- path to the data
-        segment_length -- lenght of the sensor segment to extract in seconds
+        segment_length -- length of the sensor segment to extract in seconds
         save_part_data -- whether to save the participants data or not (default - false)
         output_folder -- path to the directory to save the data (default - none)
 
@@ -438,14 +456,14 @@ def extract_data_around_tags(data_folder, segment_length, save_part_data=False, 
         part_bvp_data = []
         part_temp_data = []
 
-        print("Extracting data for participants: {}".format(p))
+        #print("Extracting data for participants: {}".format(p))
         participants_folder_path = data_folder + p + "/"
         part_subfolders = os.listdir(participants_folder_path)
 
         # for each sub-folder in the participants folder
         for sub in part_subfolders:
             path = participants_folder_path + sub
-#             print("For subfolder: {}".format(path))
+#             #print("For subfolder: {}".format(path))
 
             # get the tag events in this folder
             tag_timestamps = get_tag_timestamps(path + "/tags.csv")
@@ -487,12 +505,12 @@ def extract_data_around_tags(data_folder, segment_length, save_part_data=False, 
                         acc_data.extend(values)
                         part_acc_data.extend(values)
 
-        print(f"Processed participants {p} data {len(part_eda_data)}")
-        print("Total data ", len(eda_data))
+        #print(f"Processed participants {p} # eda segments {len(part_eda_data)}")
+        #print("Total # eda segments ", len(eda_data))
 
         # save the participants data
         if (save_part_data)  & (output_folder != None):
-            print("Saving data of participants " + p)
+            #print("Saving data of participants " + p)
             utl.save_data(output_folder + p + "_EDA_TAG.pkl", np.array(part_eda_data))
             utl.save_data(output_folder + p + "_TEMP_TAG.pkl", np.array(part_temp_data))
             utl.save_data(output_folder + p + "_HR_TAG.pkl", np.array(part_hr_data))
@@ -623,7 +641,7 @@ def not_stressed_data_from_all_files(data_folder, segment_length_to_skip, save_p
         part_bvp_data = []
         part_temp_data = []
 
-        print("Extracting data for participants: {}".format(p))
+        #print("Extracting data for participants: {}".format(p))
         participants_folder_path = data_folder + p + "/"
         part_subfolders = os.listdir(participants_folder_path)
 
@@ -674,7 +692,7 @@ def not_stressed_data_from_all_files(data_folder, segment_length_to_skip, save_p
         
         if (save_part_data)  & (output_folder != None):
             # save the participants data
-            print("Saving data of participants " + p)                                          
+            #print("Saving data of participants " + p)                                          
             utl.save_data(output_folder + p + "_EDA_NO_TAG.pkl", np.array(processed_EDA))
             utl.save_data(output_folder + p + "_TEMP_NO_TAG.pkl", np.array(part_temp_data))
             utl.save_data(output_folder + p + "_HR_NO_TAG.pkl", np.array(part_hr_data))
@@ -688,8 +706,8 @@ def not_stressed_data_from_all_files(data_folder, segment_length_to_skip, save_p
         bvp_data.extend(part_bvp_data)
         acc_data.extend(part_acc_data)
         
-        print(f"Processed participants {p} data {len(part_eda_data)}")
-        print("Total data ", len(eda_data))
+        #print(f"Processed participants {p} data {len(part_eda_data)}")
+        #print("Total data ", len(eda_data))
 
     if include_eda & include_temp & include_hr & include_bvp & include_acc:
         return np.array(eda_data), np.array(temp_data), np.array(hr_data), np.array(bvp_data), np.array(acc_data)
@@ -741,7 +759,7 @@ def not_stressed_data_from_zero_tags_files(data_folder, save_part_data=False, ou
         part_bvp_data = []
         part_temp_data = []
         
-        print("Extracting data for participants {}".format(p))
+        #print("Extracting data for participants {}".format(p))
         participants_folder_path = data_folder + p + "/"
         subfolders = os.listdir(participants_folder_path)
         
@@ -791,7 +809,7 @@ def not_stressed_data_from_zero_tags_files(data_folder, save_part_data=False, ou
         
         if (save_part_data)  & (output_folder != None):
             # save the participants data
-            print("Saving data of participants " + p)                                          
+            #print("Saving data of participants " + p)                                          
             utl.save_data(output_folder + p + "_EDA_NO_TAG.pkl", np.array(processed_EDA))
             utl.save_data(output_folder + p + "_TEMP_NO_TAG.pkl", np.array(part_temp_data))
             utl.save_data(output_folder + p + "_HR_NO_TAG.pkl", np.array(part_hr_data))
@@ -805,8 +823,8 @@ def not_stressed_data_from_zero_tags_files(data_folder, save_part_data=False, ou
         bvp_data.extend(part_bvp_data)
         acc_data.extend(part_acc_data)
         
-        print(f"Processed participants {p} data {len(processed_EDA)}")
-        print("Total data ", len(eda_data))
+        #print(f"Processed participants {p} data {len(processed_EDA)}")
+        #print("Total data ", len(eda_data))
 
     if include_eda & include_temp & include_hr & include_bvp & include_acc:
         return np.array(eda_data), np.array(temp_data), np.array(hr_data), np.array(bvp_data), np.array(acc_data)
@@ -846,6 +864,42 @@ def segment_sensor_data(data_array, sample_rate, window_duration, overlap_percen
     # return the segments
     window_segments = window_segments[1:, ]
     return window_segments
+
+def segment_sensor_data(data_array, sample_rate, window_duration, overlap_percent, samples_to_drop=None):
+    """
+        Overlapping segmentation of data.
+    @param data_array: Data to be segmented
+    @param sample_rate: Sampling frequency
+    @param window_duration: Window size in seconds
+    @param overlap_percent: Overlap percentage between consequtive windows.
+    @param samples_to_drop: indices of sample that needs to be dropped
+    """
+
+    window_segments = np.zeros((1, sample_rate * window_duration))
+    dropped_segments = np.zeros((1, sample_rate * window_duration))
+    
+    # get the window segments
+    for dt in data_array:
+#         print("Current data length ", len(dt))
+        segments = utl.segment_sensor_reading(dt, window_duration, overlap_percent, sample_rate)
+        
+        # drop any samples
+        if samples_to_drop != None:
+            dropped_segments = np.concatenate((dropped_segments, segments[samples_to_drop].reshape(1, sample_rate * window_duration)))
+
+            try:
+                segments = np.delete(segments, samples_to_drop, axis=0)
+            except:
+                # sometimes we at the end of very begining of the sensor data and there are not enough data stress segment_length > 60
+                print(f"Stress windows shape {segments.shape}")
+                segments = []
+
+        if(len(segments)):
+            window_segments = np.concatenate([window_segments, segments])
+    
+    # return the segments
+    window_segments = window_segments[1:, ]
+    return window_segments, dropped_segments[1:, ]
 
 
 # def extract_data_without_tags(data_folder, segment_length):
