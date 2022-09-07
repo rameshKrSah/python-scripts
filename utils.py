@@ -69,7 +69,8 @@ class PlotLosses(keras.callbacks.Callback):
         plt.show()
 		
 		
-def print_confusion_matrix(confusion_matrix, class_names, title, activities, figsize = (12, 6), fontsize=10):
+def print_confusion_matrix(confusion_matrix, class_names, activities, 
+  figsize = (12, 6), fontsize=10):
     """
     Prints a confusion matrix, as returned by sklearn.metrics.confusion_matrix, as a heatmap.
     
@@ -133,6 +134,28 @@ def get_features_labels_from_df(data_df, n_channels, n_window_len):
     
     return features, labels, labels_one_hot	
 	
+def min_max_scale(data):
+  """
+    Min-Max scale the data in the range [-1.0, 1.0]
+    The data is expected to have the shape (n_samples, segment_length, n_channels)
+  
+    Return the scaled data in the original shape.
+  """
+  _, segment_length, n_channels = data.shape
+
+  # flatten the data
+  features = data.reshape(-1, segment_length * n_channels)
+
+  # scale the data
+  scaler = MinMaxScaler(feature_range=(-1.0, 1.0))
+  features = scaler.fit_transform(features)
+  
+  # reshape the data
+  features = features.reshape(-1, n_channels, segment_length)
+  features = np.transpose(features, (0, 2, 1))
+
+  return features
+  
 	
 def get_cnn_model(input_shape, n_output_classes, learning_rate):
     """ 
@@ -230,6 +253,27 @@ def print_metrics(met_dict):
     print("F1 score: {:.3f}".format(met_dict['F1 Score']))
     print("ROC AUC: {:.3f}".format(met_dict['ROC AUC']))
 
+def precision_recall_f1_score(y_true, y_pred):
+  """ Compute precision, recall, and f1 score given y and y predicted.
+    y_true and y_pred are labels (not hot encoded)
+    Return a dictionary containing Precision, Recall, and F1 Score
+  """
+  # whether binary or multi-class classification
+  if len(np.unique(y_true)) == 2:
+    average_case = 'binary'
+  else:
+    average_case = 'macro'
+
+  recall = recall_score(y_true, y_pred, average=average_case)
+  precision = precision_score(y_true, y_pred, average=average_case)
+  print(f"Precision {precision} \nRecall {recall}")
+
+  f1_score_cal = f1_score(y_true, y_pred, average=average_case)
+  print("F1 score {:.3f}, with formula {:.3f}".format(f1_score_cal,
+        2 * ((precision * recall) / (precision + recall))))
+
+  return {'Precision': precision, 'Recall': recall, 'F1 Score': f1_score_cal}
+
 
 def compute_performance_metrics(model, x, y, metric_names):
     """
@@ -240,52 +284,57 @@ def compute_performance_metrics(model, x, y, metric_names):
         Arguments:
             model: tensorflow model
             x: feature vector
-            y: label vector
+            y: label vector (one hot encoded)
 
         Returns: A dictionary containint, Accuracy, Loss, True Positive, False Positive, False Negative, 
                 True Negative, Recall, Precision, f1 score, roc_auc_score
     """
-    try:
-        metrics = model.evaluate(x, y)
-    except:
-        y_hot = keras.utils.to_categorical(y, np.max(y) + 1)
-        metrics = model.evaluate(x, y_hot)
+    y_true = np.argmax(y, axis=1)
+    if len(np.unique(y_true)) > 2:
+      print("This only works for binary classification")
+      return {}
 
+    # get the metrics  
+    metrics = model.evaluate(x, y)
     rt = dict()
     for name, val in zip(metric_names, metrics):
       rt[name] = val
-    # return rt
-
+  
     # the loss is always at first position and accuracy the second
     loss, acc = metrics[0], metrics[1] * 100 
     print("Accuracy {:.3f}, Loss {:.3f}".format(acc, loss))
 
     y_probs = model.predict(x)
-    y_pred = np.argmax(y_probs, axis = 1)
-    y = np.argmax(y, axis = 1)
-    tn, fp, fn, tp = confusion_matrix(y, y_pred).ravel()
+    y_pred = np.argmax(y_probs, axis=1)
 
+    try:
+      # we can only do this in binary case
+      tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+    except:
+      print("Not a binary classification problem")
+    
+    tp, fp, tn, fn = (0, 0, 0, 0)
     print("True Positive ", tp)
     print("False Positive ", fp)
     print("True Negative ", tn)
     print("False Negative ", fn)
 
-    recall = recall_score(y, y_pred)
-    precision = precision_score(y, y_pred)
+    recall = recall_score(y_true, y_pred)
+    precision = precision_score(y_true, y_pred)
 
     print("Recall {:.3f}, with formula {:.3f}".format(recall, (tp / (tp + fn))))
     print("Precision {:.3f}, with formula {:.3f}".format(precision, (tp / (tp + fp))))
 
-    f1_score_cal = f1_score(y, y_pred)
-    print("F1 socre {:.3f}, with formula {:.3f}".format(f1_score_cal,
+    f1_score_cal = f1_score(y_true, y_pred)
+    print("F1 score {:.3f}, with formula {:.3f}".format(f1_score_cal,
            2 * ((precision * recall) / (precision + recall))))
 
-    print("Average precision score {:.3f}".format(average_precision_score(y, y_pred)))
+    print("Average precision score {:.3f}".format(average_precision_score(y_true, y_pred)))
 
-    roc_auc = roc_auc_score(y, y_pred)
+    roc_auc = roc_auc_score(y_true, y_pred)
     print("ROC AUC Score {:.3f}".format(roc_auc))
     
-    clf_report = classification_report(y, y_pred, output_dict=True)
+    clf_report = classification_report(y_true, y_pred, output_dict=True)
     pprint.pprint(clf_report)
     # print(clf_report.keys())
 
