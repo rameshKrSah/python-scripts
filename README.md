@@ -2,7 +2,17 @@
 
 A collection of Python scripts containing functions that I often use.
 
-## utils.py
+1. `dataset.py` - Functions to create datasets for training and evaluating machine learning models.
+2. `filters.py` - Functions to filter noise from 1d-sensor data
+3. `metrics.py` - Functions to compute and display different types of performance measures used in classification.
+4. `plotting.py` - Functions to plot and stylize figures.
+5. `preprocessing.py` - Functions to normalize, standardize, and scale datasets.
+6. `read_write.py` - Functions to read and write files.
+7. `training.py` - Functions to train and evalute models for classification.
+8. `utils.py` - Uncategorical useful functions.
+
+
+<!-- ## utils.py
 
 Contains the most used utilities functions and classes.
 
@@ -23,4 +33,4 @@ Contains the most used utilities functions and classes.
 15. `cross_validation`: Do cross validation from n-times.
 16. `evaluate_model`: Train a model and evalute it on training and test datasets.
 17. `segment_sensor_reading`: Overlapping window segmentation of an array.
-18. `create_tf_dataset`: Given (x, y) create a tensorflow dataset.
+18. `create_tf_dataset`: Given (x, y) create a tensorflow dataset. -->
