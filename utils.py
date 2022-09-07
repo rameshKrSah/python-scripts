@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 from IPython.display import clear_output
 
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import train_test_split, KFold
+from sklearn.metrics import confusion_matrix, matthews_corrcoef
 from sklearn.utils.multiclass import unique_labels
 from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.metrics import average_precision_score
@@ -16,6 +16,39 @@ from sklearn.metrics import classification_report, confusion_matrix
 import pprint
 import tensorflow as tf
 from tensorflow import keras
+
+def check_nan_finiteness(npArray):
+  """Check whether there are NaN and infinity values in the Numpy array"""
+  print(f"Is NaN {np.any(np.isnan(npArray))}")
+  print(f"Is Finite {np.all(np.isfinite(npArray))}")
+
+def remove_nan_infiniteness(npArray):
+    """Replace NaN with zero and infinity with large value"""
+    return np.nan_to_num(npArray)
+
+def difference_of_list(list1: list, list2: list) -> list:
+    """ Given two list, return the difference of the two lists. The difference constains the elements in list1 that are not in list2
+    list1: A list
+    list2: Another list
+
+    return list
+    """
+        
+    return list(set(list1).difference(set(list2)))
+
+def Standard_MinMax_Scaler(x, range_ : tuple):
+    """ First scale the dataset to have zero mean and unit variance. Then scale it again within the specified range.
+    x: Array to be scaled
+    range_: Range for MinMaxScaler
+    
+    return scaled_x
+    """
+    std_scaler = StandardScaler()
+    x_scaled = std_scaler.fit_transform(x)
+
+    mm_scaler = MinMaxScaler(feature_range=range_)
+    x_scaled = mm_scaler.fit_transform(x_scaled)
+    return x_scaled 
 
 class PlotLosses(keras.callbacks.Callback):
     """
@@ -167,8 +200,8 @@ def standard_scaler(data):
   # flatten the data
   features = data.reshape(-1, segment_length * n_channels)
 
-  # scale the data
-  scaler = StandardScaler(with_mean=False, with_std=False)
+  # scale the data: zero mean, 1 std
+  scaler = StandardScaler()
   features = scaler.fit_transform(features)
   
   # reshape the data
@@ -340,13 +373,13 @@ def compute_performance_metrics(model, x, y, metric_names):
     print("True Negative ", tn)
     print("False Negative ", fn)
 
-    recall = recall_score(y_true, y_pred)
-    precision = precision_score(y_true, y_pred)
+    recall = recall_score(y_true, y_pred, average='macro')
+    precision = precision_score(y_true, y_pred, average='macro')
 
     print("Recall {:.3f}, with formula {:.3f}".format(recall, (tp / (tp + fn))))
     print("Precision {:.3f}, with formula {:.3f}".format(precision, (tp / (tp + fp))))
 
-    f1_score_cal = f1_score(y_true, y_pred)
+    f1_score_cal = f1_score(y_true, y_pred, average='macro')
     print("F1 score {:.3f}, with formula {:.3f}".format(f1_score_cal,
            2 * ((precision * recall) / (precision + recall))))
 
@@ -354,6 +387,9 @@ def compute_performance_metrics(model, x, y, metric_names):
 
     roc_auc = roc_auc_score(y_true, y_pred)
     print("ROC AUC Score {:.3f}".format(roc_auc))
+
+    matt_coef = matthews_corrcoef(y_true, y_pred)
+    print("Matthews Corr Coeff {:.3f}".format(matt_coef))
     
     clf_report = classification_report(y_true, y_pred, output_dict=True)
     pprint.pprint(clf_report)
@@ -368,7 +404,8 @@ def compute_performance_metrics(model, x, y, metric_names):
             'Recall': recall,
             'Precision': precision,
             'F1 Score': f1_score_cal,
-            'ROC AUC': roc_auc
+            'ROC AUC': roc_auc,
+            'Matthews Corr Coef': matt_coef
             }
 
     return rt_dict
@@ -384,7 +421,7 @@ def split_into_train_test(X, Y, test_split = 0.25):
             test_split (float): Test split (0.25 by default)
 
         Returns:
-            x_train, y_train, x_test, and y_test
+            x_train, x_test, y_train, and y_test
     """
     if len(X) != len(Y):
         raise ValueError("X and Y must be the same length")
@@ -474,7 +511,7 @@ def load_data_with_preprocessing(data_path):
     return x, y
 
 
-def cross_validation(model_function, X, Y, n_CV, test_split, val_split, batch_size=32, epochs=50):
+def cross_validation_model(model_function, X, Y, n_CV, test_split, val_split, batch_size=32, epochs=50):
     """
         @brief: Do cross validation for n_CV times and returns the results.
 
@@ -554,8 +591,14 @@ def evaluate_model(model, x_tr, y_tr, x_ts, y_ts, val_split=0.0,
 
     # get the performance values
     train_metrics = model.evaluate(x_tr, y_tr)
-    test_metrics = model.evaluate(x_ts, y_ts)
-    
+    test_metrics = {}
+    try:
+        if x_ts.any() != None:
+            test_metrics = model.evaluate(x_ts, y_ts)
+    except:
+        if x_ts != None:
+            test_metrics = model.evaluate(x_ts, y_ts)
+        
     return train_metrics, test_metrics
 
 
@@ -572,7 +615,7 @@ def segment_sensor_reading(values, window_duration, overlap_percentage,
     """
 
     total_length = len(values)
-    window_length = sampling_frequency * window_duration
+    window_length = int(sampling_frequency * window_duration)
     segments = []
     if(total_length < window_length):
         return segments
@@ -601,6 +644,62 @@ def segment_sensor_reading(values, window_duration, overlap_percentage,
     segments = np.array(segments).reshape(len(segments), window_length)
     return segments
 
+def cross_validation(model_function, X, Y, n_CV, batch_size=32, epochs=50):
+    """
+        @brief: Do cross validation for n_CV times and returns the results.
+
+        @param: model_function : A function that returns the model after calling it.
+        @param: X (array): Total data
+        @param: Y (array): Total label
+        @param: n_CV (int): Number of cross validation.
+        @param: batch_size (int): Default 32
+        @param: epochs (int): Default 50
+
+        @return: Results of the cross validation, a dictionary
+    """
+    i = 1
+    results_dict = {}
+    metrics_arr = []
+    kf = KFold(n_splits=n_CV, shuffle=True, random_state=42)
+    
+    for train_indices, test_indices in kf.split(X):
+      x_tr, y_tr, x_ts, y_ts = X[train_indices], Y[train_indices], X[test_indices], Y[test_indices]
+      y_tr_hot = get_hot_labels(y_tr)
+      y_ts_hot = get_hot_labels(y_ts)
+
+      model = model_function()
+      results = evaluate_model(model, x_tr, y_tr_hot, x_ts, y_ts_hot, 
+                                batch_size=batch_size, epochs=epochs)
+      
+      
+      train_report = compute_performance_metrics(model, x_tr, y_tr_hot, ['loss', 'acc'])
+      test_report = compute_performance_metrics(model, x_ts, y_ts_hot, ['loss', 'acc'])
+      results_dict[i] = {'train': train_report, 'test': test_report}
+
+      results[0].append(results_dict[i]['train']['Recall'])
+      results[0].append(results_dict[i]['train']['Precision'])
+      results[0].append(results_dict[i]['train']['F1 Score'])
+      
+      results[1].append(results_dict[i]['test']['Recall'])
+      results[1].append(results_dict[i]['test']['Precision'])
+      results[1].append(results_dict[i]['test']['F1 Score'])
+      
+      metrics_arr.append(results)
+      i += 1      
+
+    metrics_arr = np.array(metrics_arr).reshape(n_CV, 10)
+    print("MEAN Training Set Accuracy {:.3f}".format(np.average(metrics_arr[:, 1].ravel())))
+    print("MEAN Training Set Recall {:.3f}".format(np.average(metrics_arr[:, 2].ravel())))
+    print("MEAN Training Set Precision {:.3f}".format(np.average(metrics_arr[:, 3].ravel())))
+    print("MEAN Training Set F1 {:.3f}".format(np.average(metrics_arr[:, 4].ravel())))
+    
+    print()
+    print("MEAN Testing Set Accuracy {:.3f}".format(np.average(metrics_arr[:, 6].ravel())))
+    print("MEAN Testing Set Recall {:.3f}".format(np.average(metrics_arr[:, 7].ravel())))
+    print("MEAN Testing Set Precision {:.3f}".format(np.average(metrics_arr[:, 8].ravel())))
+    print("MEAN Testing Set F1 {:.3f}".format(np.average(metrics_arr[:, 9].ravel())))
+
+    return results_dict
 
 def create_tf_dataset(X, Y, batch_size, test_size=0.3):
   """ Create train and test TF dataset from X and Y
